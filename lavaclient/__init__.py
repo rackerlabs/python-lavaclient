@@ -21,8 +21,7 @@ from lavaclient.client import Lava
 from lavaclient.log import NullHandler
 from lavaclient.error import (
     LavaError, InvalidError, AuthenticationError, AuthorizationError,
-    RequestError, ApiError, FailedError, TimeoutError, NotFoundError,
-    ProxyError)
+    RequestError, ApiError, FailedError, TimeoutError, ProxyError)
 
 
 __version_info__ = _version.__version_info__
@@ -35,4 +34,4 @@ LOG.addHandler(NullHandler())
 
 __all__ = ['Lava', 'LavaError', 'InvalidError', 'AuthenticationError',
            'AuthorizationError', 'RequestError', 'ApiError', 'FailedError',
-           'TimeoutError', 'NotFoundError', 'ProxyError']
+           'TimeoutError', 'ProxyError']

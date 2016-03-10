@@ -281,7 +281,9 @@ def test_wait(stdout, print_table, print_single_table, mock_client,
     active = deepcopy(cluster_response)
     active['cluster']['status'] = 'ACTIVE'
 
-    mock_client._request.side_effect = [building, configuring, active]
+    mock_client._request.side_effect = [
+        building, building, configuring, active
+    ]
 
     with patch.object(mock_client.clusters, '_command_line', True):
         main()

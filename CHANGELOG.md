@@ -1,11 +1,9 @@
-0.3.9
+0.3.8
 -----
 * CLI
     * Add ability to delete individual nodes
-
-0.3.8
------
 * Validate cluster usernames
+* Cluster actions can use either the cluster ID or name
 
 0.3.7
 -----

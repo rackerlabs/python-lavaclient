@@ -2,6 +2,7 @@ import logging
 import six
 from figgis import Config, ListField
 
+from lavaclient.api.clusters import id_or_name
 from lavaclient.api import resource
 from lavaclient import constants
 from lavaclient.api.response import Node
@@ -39,10 +40,14 @@ class Resource(resource.Resource):
 
         :returns: List of :class:`~lavaclient.api.response.Node` objects
         """
-        return self._parse_response(
-            self._client._get('clusters/{0}/nodes'.format(cluster_id)),
-            NodesResponse,
-            wrapper='nodes')
+        @id_or_name
+        def _func(self, cluster_id):
+            return self._parse_response(
+                self._client._get('clusters/{0}/nodes'.format(cluster_id)),
+                NodesResponse,
+                wrapper='nodes')
+
+        return _func(self, cluster_id)
 
     @command(
         parser_options=dict(
@@ -65,5 +70,9 @@ class Resource(resource.Resource):
         :param node_id:
         :return: None
         """
-        self._client._delete('clusters/{0}/nodes/{1}'.format(cluster_id,
-                                                             node_id))
+        @id_or_name
+        def _func(self, cluster_id):
+            self._client._delete('clusters/{0}/nodes/{1}'.format(
+                cluster_id, node_id))
+
+        _func(self, cluster_id)

@@ -23,6 +23,7 @@ import time
 import sys
 import socket
 import os.path
+import functools
 from getpass import getuser
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -64,6 +65,31 @@ def natural_number(value):
         raise argparse.ArgumentTypeError('Must be a non-negative integer')
 
     return intval
+
+
+def id_or_name(func):
+    """Decorate a function to either accept a cluster ID or cluster name as
+    the first argument"""
+    @functools.wraps(func)
+    def wrapped(self, maybe_cluster_id):
+        try:
+            return func(self, maybe_cluster_id)
+        except error.RequestError as exc:
+            if exc.code != 404:
+                raise
+
+            cluster = next(
+                (cluster for cluster in self._client.clusters.list()
+                 if cluster.name == maybe_cluster_id),
+                None
+            )
+
+            if cluster is None:
+                raise
+
+            return func(self, cluster.id)
+
+    return wrapped
 
 
 ######################################################################
@@ -265,10 +291,14 @@ class Resource(resource.Resource):
         :param cluster_id: Cluster ID
         :returns: :class:`~lavaclient.api.response.ClusterDetail`
         """
-        return self._parse_response(
-            self._client._get('clusters/' + six.text_type(cluster_id)),
-            ClusterResponse,
-            wrapper='cluster')
+        @id_or_name
+        def _func(self, cluster_id):
+            return self._parse_response(
+                self._client._get('clusters/' + six.text_type(cluster_id)),
+                ClusterResponse,
+                wrapper='cluster')
+
+        return _func(self, cluster_id)
 
     def _gather_node_groups(self, node_groups):
         """Transform node_groups into a list of dicts"""
@@ -406,11 +436,15 @@ class Resource(resource.Resource):
 
         request_data = self._marshal_request(data, ClusterUpdateRequest)
 
-        cluster = self._parse_response(
-            self._client._put('clusters/{0}'.format(cluster_id),
-                              json=request_data),
-            ClusterResponse,
-            wrapper='cluster')
+        @id_or_name
+        def _func(self, cluster_id):
+            return self._parse_response(
+                self._client._put('clusters/{0}'.format(cluster_id),
+                                  json=request_data),
+                ClusterResponse,
+                wrapper='cluster')
+
+        cluster = _func(self, cluster_id)
 
         if wait:
             return self.wait(cluster.id)
@@ -464,8 +498,12 @@ class Resource(resource.Resource):
                                              ClusterCredentialsRequest,
                                              wrapper='cluster')
 
-        response = self._client._put('clusters/{0}'.format(cluster_id),
+        @id_or_name
+        def _func(self, cluster_id):
+            return self._client._put('clusters/{0}'.format(cluster_id),
                                      json=request_data)
+
+        response = _func(self, cluster_id)
         cluster = self._parse_response(
             response,
             ClusterResponse,
@@ -520,8 +558,13 @@ class Resource(resource.Resource):
         request_data = self._marshal_request({'remove_credentials': creds},
                                              ClusterCredentialsRemovalRequest,
                                              wrapper='cluster')
-        response = self._client._put('clusters/{0}'.format(cluster_id),
+
+        @id_or_name
+        def _func(self, cluster_id):
+            return self._client._put('clusters/{0}'.format(cluster_id),
                                      json=request_data)
+
+        response = _func(self, cluster_id)
         cluster = self._parse_response(
             response,
             ClusterResponse,
@@ -655,7 +698,10 @@ class Resource(resource.Resource):
     def _delete(self, cluster_ids, force=False):
         for cluster_id in cluster_ids:
             if not force:
-                display_result(self.get(cluster_id), ClusterDetail)
+                cluster = self._get_by_name_or_id(cluster_id)
+                cluster_id = cluster.id
+
+                display_result(cluster, ClusterDetail)
 
                 if not confirm('Delete this cluster?'):
                     continue
@@ -669,7 +715,11 @@ class Resource(resource.Resource):
         :param cluster_id: Cluster ID
         :returns: :class:`~lavaclient.api.response.ClusterDetail`
         """
-        self._client._delete('clusters/' + six.text_type(cluster_id))
+        @id_or_name
+        def _func(self, cluster_id):
+            self._client._delete('clusters/' + six.text_type(cluster_id))
+
+        _func(self, cluster_id)
 
     @coroutine
     def _cli_wait_printer(self, start):
@@ -726,6 +776,7 @@ class Resource(resource.Resource):
         timeout_date = start + delta
 
         printer = self._cli_wait_printer(start)
+        cluster_id = self._get_by_name_or_id(cluster_id).id
 
         while datetime.now() < timeout_date:
             cluster = self.get(cluster_id)
@@ -782,6 +833,20 @@ class Resource(resource.Resource):
             raise error.InvalidError(
                 'Component {0} not found in cluster'.format(component))
 
+    def _get_by_name_or_id(self, maybe_id):
+        try:
+            return self.get(maybe_id)
+        except error.RequestError as exc:
+            if exc.code != 404:
+                raise
+
+            cluster = next((cluster for cluster in self.list()
+                            if cluster.name == maybe_id), None)
+            if not cluster:
+                raise
+
+            return cluster
+
     def _ssh_cluster_nodes(self, cluster_id, wait=False):
         """
         Return `(cluster, nodes)`, where `nodes` is a list of all non-Ambari
@@ -789,7 +854,7 @@ class Resource(resource.Resource):
         wait is `True`, the function will block until it becomes active;
         otherwise, an exception is thrown.
         """
-        cluster = self.get(cluster_id)
+        cluster = self._get_by_name_or_id(cluster_id)
         status = cluster.status.upper()
         if status not in FINAL_STATES:
             LOG.debug('Cluster status: %s', status)
@@ -1007,10 +1072,16 @@ class Resource(resource.Resource):
                 }
             }
         }
-        return self._parse_response(
-            self._client._put('clusters/{0}'.format(cluster_id), json=data),
-            ClusterResponse,
-            wrapper='cluster')
+
+        @id_or_name
+        def _service(self, cluster_id):
+            return self._parse_response(
+                self._client._put('clusters/{0}'.format(cluster_id),
+                                  json=data),
+                ClusterResponse,
+                wrapper='cluster')
+
+        return _service(self, cluster_id)
 
     @command(
         parser_options=dict(
